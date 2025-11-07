@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      # Fallbacks if not defined in .env
+      - LLM_MODEL_NAME=${LLM_MODEL_NAME:-qwen3-32b}
+      - LLM_AUTH_HEADER=${LLM_AUTH_HEADER:-X-Auth-Token}
+      - FULL_CHAT_COMPLETIONS_URL=${FULL_CHAT_COMPLETIONS_URL:-}
+      - HUAWEI_LLM_ENDPOINT=${HUAWEI_LLM_ENDPOINT:-}
+      - HUAWEI_LLM_API_KEY=${HUAWEI_LLM_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LLM_API_BASE=${LLM_API_BASE:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+    restart: unless-stopped

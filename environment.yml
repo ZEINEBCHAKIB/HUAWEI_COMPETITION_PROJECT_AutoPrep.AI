@@ -1,0 +1,15 @@
+name: auto-preprocess-llm
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pandas
+  - numpy
+  - scikit-learn
+  - pip:
+      - streamlit>=1.37.0
+      - reportlab>=3.6.0
+      - requests>=2.31.0
+ 

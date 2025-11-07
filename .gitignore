@@ -1,0 +1,15 @@
+# Sensitive information and credentials
+.env
+*.env
+!.env.example
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# IDE settings
+.vscode/
+.idea/
