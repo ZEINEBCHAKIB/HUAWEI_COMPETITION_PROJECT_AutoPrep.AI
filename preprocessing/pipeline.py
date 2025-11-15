@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional, List
 
 import numpy as np
 import pandas as pd
+from scipy import stats as scipy_stats
 from sklearn.impute import SimpleImputer, KNNImputer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler, MinMaxScaler
 
@@ -28,6 +29,7 @@ class AutoPreprocessor:
         high_missing_threshold: float = 0.3,
         apply_outlier_treatment: bool = True,
         scaling_enabled: bool = True,
+        scaling_method: Optional[str] = None,
         llm_model: Optional[str] = None,
     ):
         self.target_column = target_column
@@ -35,7 +37,29 @@ class AutoPreprocessor:
         self.high_missing_threshold = high_missing_threshold
         self.apply_outlier_treatment = apply_outlier_treatment
         self.scaling_enabled = scaling_enabled
+        self.scaling_method = scaling_method  # None='auto', 'standard', or 'minmax'
         self.llm_model = llm_model
+
+    def _choose_scaling_method(self, series: pd.Series) -> str:
+        """
+        Auto-detect scaling method based on skewness.
+        - If |skewness| > 0.5: use MinMaxScaler (better for skewed data)
+        - Otherwise: use StandardScaler (better for normal distributions)
+        """
+        try:
+            # Remove NaN values for skewness calculation
+            clean_series = pd.to_numeric(series, errors='coerce').dropna()
+            if len(clean_series) < 2:
+                return 'standard'
+            
+            skewness = scipy_stats.skew(clean_series)
+            # If data is significantly skewed, use MinMax; otherwise StandardScaler
+            if abs(skewness) > 0.5:
+                return 'minmax'
+            else:
+                return 'standard'
+        except Exception:
+            return 'standard'
 
     def fit_transform(self, df: pd.DataFrame) -> PreprocessResult:
         df = df.copy()
@@ -74,6 +98,7 @@ class AutoPreprocessor:
                 'high_missing_threshold': self.high_missing_threshold,
                 'outliers': self.apply_outlier_treatment,
                 'scaling': self.scaling_enabled,
+                'scaling_method': self.scaling_method or 'auto-detect',
             },
             'drops': drops,
             'features': {},
@@ -125,7 +150,14 @@ class AutoPreprocessor:
 
                 # Scaling
                 if self.scaling_enabled:
-                    scaler_key = decision.get('scaling') or 'standard'
+                    # Determine scaling method
+                    if self.scaling_method is None:
+                        # Auto-detect based on skewness
+                        scaler_key = self._choose_scaling_method(df[col])
+                    else:
+                        # Use user-selected method
+                        scaler_key = self.scaling_method
+                    
                     scaler = numeric_scaler.get(scaler_key, StandardScaler())
                     s_proc = scaler.fit_transform(s_proc.values.reshape(-1, 1)).ravel()
                 processed[col] = s_proc
@@ -163,13 +195,35 @@ class AutoPreprocessor:
                         s_parsed = s_parsed.fillna(fill_date)
                     
                     # Extract temporal features
-                    processed["year"] = s_parsed.dt.year
-                    processed["month"] = s_parsed.dt.month
-                    processed["day"] = s_parsed.dt.day
-                    processed["day_of_week"] = s_parsed.dt.dayofweek  # 0=Monday, 6=Sunday
+                    year_vals = s_parsed.dt.year
+                    month_vals = s_parsed.dt.month
+                    day_vals = s_parsed.dt.day
+                    day_of_week_vals = s_parsed.dt.dayofweek  # 0=Monday, 6=Sunday
+                    is_weekend_vals = (s_parsed.dt.dayofweek >= 5).astype(int)
                     
-                    # Binary: is_weekend (Saturday=5, Sunday=6)
-                    processed["is_weekend"] = (s_parsed.dt.dayofweek >= 5).astype(int)
+                    # Apply scaling to numeric temporal features if enabled
+                    if self.scaling_enabled:
+                        # Determine scaling method for temporal features
+                        if self.scaling_method is None:
+                            # Auto-detect based on skewness of year (representative feature)
+                            scaler_key = self._choose_scaling_method(pd.Series(year_vals))
+                        else:
+                            scaler_key = self.scaling_method
+                        
+                        scaler = numeric_scaler.get(scaler_key, StandardScaler())
+                        
+                        # Scale all numeric temporal features
+                        year_vals = scaler.fit_transform(year_vals.values.reshape(-1, 1)).ravel()
+                        month_vals = scaler.fit_transform(month_vals.values.reshape(-1, 1)).ravel()
+                        day_vals = scaler.fit_transform(day_vals.values.reshape(-1, 1)).ravel()
+                        day_of_week_vals = scaler.fit_transform(day_of_week_vals.values.reshape(-1, 1)).ravel()
+                        # is_weekend is binary, no need to scale
+                    
+                    processed["year"] = year_vals
+                    processed["month"] = month_vals
+                    processed["day"] = day_vals
+                    processed["day_of_week"] = day_of_week_vals
+                    processed["is_weekend"] = is_weekend_vals
                     
                     # Part of day based on hour (if time available)
                     if s_parsed.dt.hour.notna().any():

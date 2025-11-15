@@ -6,13 +6,26 @@ import numpy as np
 import pandas as pd
 
 
-ID_PATTERN = re.compile(r"^(id|.*_id|code|.*_code)$", re.IGNORECASE)
+ID_PATTERN = re.compile(r"^(id|.*_id|code|.*_code|.*_number|.*_num)$", re.IGNORECASE)
 
 
 def infer_types(df: pd.DataFrame) -> Dict[str, str]:
     types: Dict[str, str] = {}
     for col in df.columns:
         s = df[col]
+        
+        # Check if column name matches ID pattern FIRST (case-insensitive)
+        # This catches transaction_id, user_id, etc. regardless of data type
+        if ID_PATTERN.match(col):
+            types[col] = 'id'
+            continue
+        
+        # Check if column has very high uniqueness (almost all unique values)
+        if s.nunique(dropna=True) > 0.9 * s.shape[0]:
+            types[col] = 'id'
+            continue
+        
+        # Now check data types
         if s.dtype.kind in ('i', 'u', 'f'):
             types[col] = 'numeric'
         elif np.issubdtype(s.dtype, np.datetime64):
@@ -30,11 +43,7 @@ def infer_types(df: pd.DataFrame) -> Dict[str, str]:
             if len(sample) > 0 and dt_count / len(sample) > 0.7:
                 types[col] = 'datetime'
             else:
-                # detect id-like by name or high uniqueness
-                if ID_PATTERN.match(col) or s.nunique(dropna=True) > 0.9 * s.shape[0]:
-                    types[col] = 'id'
-                else:
-                    types[col] = 'categorical'
+                types[col] = 'categorical'
         else:
             types[col] = 'categorical'
     return types

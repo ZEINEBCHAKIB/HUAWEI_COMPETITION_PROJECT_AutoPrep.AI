@@ -7,8 +7,8 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from pipeline import AutoPreprocessor
-from report import generate_pdf_report
+from preprocessing.pipeline import AutoPreprocessor
+from preprocessing.report import generate_pdf_report
 
 st.set_page_config(page_title="AUTOPREP.AI - Smart Data Preprocessing", layout="wide", page_icon="☁️")
 
@@ -31,7 +31,21 @@ with st.sidebar:
     low_card_threshold = st.number_input("Low cardinality threshold (One-Hot)", min_value=2, max_value=200, value=10)
     high_missing_threshold = st.slider("Missing columns removal threshold (%)", min_value=0, max_value=100, value=30)
     apply_outlier_treatment = st.checkbox("Treat outliers (IQR)", value=True)
-    scaling_enabled = st.checkbox("Enable scaling (numeric)", value=True)
+    
+    # Scaling method selection
+    st.subheader("Scaling Method")
+    scaling_method = st.radio(
+        "Choose scaling method (leave empty for auto-detection based on skewness):",
+        options=["Auto-detect", "Standardization", "Normalization"],
+        index=0
+    )
+    # Convert to internal format
+    if scaling_method == "Auto-detect":
+        scaling_method_param = None
+    elif scaling_method == "Standardization":
+        scaling_method_param = "standard"
+    else:  # Normalization
+        scaling_method_param = "minmax"
 
 uploaded = st.file_uploader("Upload CSV (UTF-8)", type=["csv"]) 
 
@@ -44,6 +58,7 @@ if 'state' not in st.session_state:
         'after_stats': None,
         'pdf_bytes': None,
         'csv_bytes': None,
+        'original_filename': None,
     }
 
 col1, col2, col3 = st.columns([1,1,1])
@@ -59,6 +74,7 @@ if uploaded is not None and st.session_state['state']['df_raw'] is None:
     try:
         df_raw = pd.read_csv(uploaded)
         st.session_state['state']['df_raw'] = df_raw
+        st.session_state['state']['original_filename'] = uploaded.name
         st.success(f"Dataset loaded: {df_raw.shape[0]} rows, {df_raw.shape[1]} columns")
     except Exception as e:
         st.error(f"CSV reading error: {e}")
@@ -75,7 +91,8 @@ if analyze:
                 low_card_threshold=int(low_card_threshold),
                 high_missing_threshold=float(high_missing_threshold)/100.0,
                 apply_outlier_treatment=apply_outlier_treatment,
-                scaling_enabled=scaling_enabled,
+                scaling_enabled=True,
+                scaling_method=scaling_method_param,
                 llm_model=llm_model,
             )
             result = pre.fit_transform(st.session_state['state']['df_raw'])
@@ -114,19 +131,37 @@ if download_pdf_btn:
 
 # Downloads
 if st.session_state['state']['csv_bytes']:
+    # Generate filename based on original file
+    original_name = st.session_state['state']['original_filename']
+    if original_name:
+        # Remove .csv extension if present and add _preprocessed
+        base_name = original_name.replace('.csv', '') if original_name.endswith('.csv') else original_name
+        csv_filename = f"{base_name}_preprocessed.csv"
+    else:
+        csv_filename = "dataset_preprocessed.csv"
+    
     st.download_button(
         label="Download Preprocessed CSV",
         data=st.session_state['state']['csv_bytes'],
-        file_name="dataset_preprocessed.csv",
+        file_name=csv_filename,
         mime="text/csv",
         use_container_width=True,
     )
 
 if st.session_state['state']['pdf_bytes']:
+    # Generate filename based on original file
+    original_name = st.session_state['state']['original_filename']
+    if original_name:
+        # Remove .csv extension if present and add rapport_ prefix
+        base_name = original_name.replace('.csv', '') if original_name.endswith('.csv') else original_name
+        pdf_filename = f"rapport_{base_name}.pdf"
+    else:
+        pdf_filename = "rapport_preprocessing.pdf"
+    
     st.download_button(
         label="Download PDF Report",
         data=st.session_state['state']['pdf_bytes'],
-        file_name="rapport_preprocessing.pdf",
+        file_name=pdf_filename,
         mime="application/pdf",
         use_container_width=True,
     )

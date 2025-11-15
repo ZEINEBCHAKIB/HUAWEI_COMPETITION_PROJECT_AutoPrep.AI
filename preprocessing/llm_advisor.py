@@ -13,26 +13,26 @@ def _heuristic_decision(feature: Dict[str, Any]) -> Dict[str, Any]:
     if ftype == "numeric":
         if missing > 0.2:
             method = "median"
-            reason = "Taux de valeurs manquantes élevé; la médiane est robuste."
+            reason = "High missing rate; median is robust."
         else:
             method = "mean" if abs(skew) < 1.0 else "median"
-            reason = "Skew faible -> moyenne; sinon médiane plus robuste."
+            reason = "Low skew -> mean; otherwise median is more robust."
         scaling = "standard" if abs(skew) < 1.0 else "minmax"
         return {"imputation": method, "encoding": None, "scaling": scaling, "reason": reason}
 
     if ftype == "categorical":
         if cardinality <= 20:
             enc = "onehot"
-            reason = "Faible cardinalité -> One-Hot."
+            reason = "Low cardinality -> One-Hot encoding."
         else:
             enc = "frequency"
-            reason = "Haute cardinalité -> Frequency encoding."
+            reason = "High cardinality -> Frequency encoding."
         return {"imputation": "most_frequent", "encoding": enc, "scaling": None, "reason": reason}
 
     if ftype == "datetime":
-        return {"imputation": "drop" if missing > 0.3 else "leave", "encoding": "cyclical", "scaling": None, "reason": "Dates encodées cycliquement si gardées."}
+        return {"imputation": "drop" if missing > 0.3 else "leave", "encoding": "cyclical", "scaling": None, "reason": "Datetime features extracted (year, month, day, etc.)"}
 
-    return {"imputation": "leave", "encoding": None, "scaling": None, "reason": "Type non pris en charge, laissé tel quel."}
+    return {"imputation": "leave", "encoding": None, "scaling": None, "reason": "Unsupported type; left as-is."}
 
 
 def _llm_endpoint_config():
@@ -69,12 +69,12 @@ def advise(feature_stats: Dict[str, Any], model: str | None = None) -> Dict[str,
         return _heuristic_decision(feature_stats)
 
     system = (
-        "Tu es un expert en preprocessing. Donne des recommandations concises en JSON; "
-        "clés: imputation (mean|median|knn|drop|leave|most_frequent), encoding (onehot|frequency|target|cyclical|none), "
-        "scaling (standard|minmax|none), reason (français court)."
+        "You are a data preprocessing expert. Provide concise recommendations in JSON format; "
+        "keys: imputation (mean|median|knn|drop|leave|most_frequent), encoding (onehot|frequency|target|cyclical|none), "
+        "scaling (standard|minmax|none), reason (short explanation in English)."
     )
     user = (
-        "Voici les statistiques d'une colonne. Propose la meilleure stratégie.\n" +
+        "Here are the statistics for a column. Propose the best preprocessing strategy.\n" +
         json.dumps(feature_stats, ensure_ascii=False)
     )
 
